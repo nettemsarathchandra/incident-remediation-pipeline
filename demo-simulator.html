@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ServiceNow ⇄ AWX Closed-Loop Automation Demo</title>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --panel-bg: #1e293b;
+      --card-bg: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --snow-green: #22c55e;
+      --snow-red: #ef4444;
+      --snow-amber: #f59e0b;
+      --snow-blue: #3b82f6;
+      --snow-header: #293e40;
+      --awx-blue: #0066cc;
+      --border-color: #475569;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-dark); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; }
+    
+    /* Header */
+    header {
+      background: #020617;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand h1 { font-size: 1.25rem; font-weight: 700; color: #38bdf8; }
+    .badge { background: #0369a1; color: #e0f2fe; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+
+    /* Nav tabs */
+    .scenario-nav {
+      background: #0f172a;
+      padding: 0.75rem 2rem;
+      display: flex;
+      gap: 12px;
+      border-bottom: 1px solid var(--border-color);
+      overflow-x: auto;
+    }
+    .scenario-btn {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .scenario-btn:hover { background: var(--card-bg); color: var(--text-main); }
+    .scenario-btn.active {
+      background: #0284c7;
+      color: white;
+      border-color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+    }
+
+    /* Executive pitch banner */
+    .pitch-banner {
+      background: linear-gradient(90deg, #1e1b4b 0%, #0f172a 100%);
+      border-left: 4px solid #818cf8;
+      padding: 0.75rem 2rem;
+      font-size: 0.9rem;
+      color: #c7d2fe;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .pitch-banner b { color: #ffffff; }
+
+    /* Workspace */
+    .workspace {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      padding: 1.5rem 2rem;
+      flex: 1;
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--panel-bg);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .panel-header {
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .panel-header.snow { background: #134e4a; color: #99f6e4; }
+    .panel-header.awx { background: #1e3a5f; color: #93c5fd; }
+    .panel-body { padding: 16px; flex: 1; overflow-y: auto; max-height: 650px; }
+
+    /* ServiceNow Ticket Mock */
+    .form-row { display: grid; grid-template-columns: 120px 1fr; gap: 12px; margin-bottom: 10px; font-size: 0.85rem; align-items: center; }
+    .form-label { color: var(--text-muted); font-weight: 500; }
+    .form-input {
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .trigger-bar {
+      margin: 16px 0;
+      padding: 12px;
+      background: #020617;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .run-btn {
+      background: #16a34a;
+      color: white;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+    .run-btn:hover { background: #22c55e; }
+    .run-btn:disabled { background: #475569; cursor: not-allowed; }
+
+    /* Work notes area */
+    .worknotes-box {
+      margin-top: 14px;
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 14px;
+      min-height: 250px;
+    }
+    .worknote-title { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-weight: 700; }
+    
+    /* Result styling */
+    .banner-success { background: rgba(34, 197, 94, 0.15); border-left: 4px solid var(--snow-green); color: #86efac; padding: 10px; border-radius: 4px; margin-bottom: 12px; font-weight: 600; font-size: 0.9rem; }
+    .banner-rejected { background: rgba(239, 68, 68, 0.15); border-left: 4px solid var(--snow-red); color: #fca5a5; padding: 10px; border-radius: 4px; margin-bottom: 12px; font-weight: 600; font-size: 0.9rem; }
+    .banner-rollback { background: rgba(245, 158, 11, 0.15); border-left: 4px solid var(--snow-amber); color: #fcd34d; padding: 10px; border-radius: 4px; margin-bottom: 12px; font-weight: 600; font-size: 0.9rem; }
+
+    table.data-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.8rem; }
+    table.data-table th, table.data-table td { border: 1px solid var(--border-color); padding: 6px 10px; text-align: left; }
+    table.data-table th { background: #1e293b; color: #cbd5e1; }
+    .diff-box { background: #020617; border: 1px solid var(--border-color); padding: 10px; font-family: monospace; font-size: 0.75rem; border-radius: 4px; margin: 8px 0; overflow-x: auto; }
+    .diff-add { color: #4ade80; }
+    .diff-del { color: #f87171; }
+
+    /* AWX Terminal */
+    .terminal-body {
+      background: #020617;
+      color: #38bdf8;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      padding: 14px;
+      height: 100%;
+      overflow-y: auto;
+    }
+    .term-line { margin-bottom: 4px; white-space: pre-wrap; }
+    .term-task { color: #facc15; font-weight: bold; }
+    .term-ok { color: #4ade80; }
+    .term-changed { color: #fb923c; }
+    .term-failed { color: #f87171; }
+    .term-dim { color: #64748b; }
+
+    /* Architecture overlay footer */
+    footer {
+      background: #020617;
+      border-top: 1px solid var(--border-color);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .flow-badge { color: #38bdf8; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div style="font-size: 1.6rem;">⚡</div>
+      <div>
+        <h1>Closed-Loop Enterprise Automation</h1>
+        <p style="font-size: 0.75rem; color: var(--text-muted);">ServiceNow (ITSM) ⇄ Red Hat AWX (Ansible) ⇄ Multi-Cloud Infrastructure</p>
+      </div>
+    </div>
+    <div style="display:flex; gap: 10px; align-items:center;">
+      <span class="badge">Client Demonstration Simulator</span>
+      <span style="font-size: 0.8rem; color: #22c55e;">● Ready to Present</span>
+    </div>
+  </header>
+
+  <!-- Talking Points Banner -->
+  <div class="pitch-banner">
+    <div>
+      <b>Value Proposition for Client:</b> "Zero configuration drift, automated pre/post validations, and full SOX/ITIL compliance with zero human error."
+    </div>
+    <div style="font-size: 0.8rem; color: #a5b4fc;">
+      ⚡ MTTR reduced from <b>3 days</b> to <b>45 seconds</b>
+    </div>
+  </div>
+
+  <!-- Scenario Navigation -->
+  <div class="scenario-nav">
+    <button class="scenario-btn active" onclick="loadScenario(1)">
+      <span>🌐</span> Use Case 1: Cisco Interface Change (Validated)
+    </button>
+    <button class="scenario-btn" onclick="loadScenario(2)">
+      <span>🛡️</span> Use Case 2: AWS Security Policy Rejection
+    </button>
+    <button class="scenario-btn" onclick="loadScenario(3)">
+      <span>🔄</span> Use Case 3: AWS Auto-Rollback on Health Failure
+    </button>
+    <button class="scenario-btn" onclick="loadScenario(4)">
+      <span>🔍</span> Use Case 4: Incident Automated Diagnostics
+    </button>
+  </div>
+
+  <!-- Main Split-Screen Workspace -->
+  <div class="workspace">
+
+    <!-- LEFT: ServiceNow Window -->
+    <div class="panel">
+      <div class="panel-header snow">
+        <span>📋 ServiceNow ITSM Portal — Ticket View</span>
+        <span id="ticket-badge" style="font-size: 0.75rem; background: #042f2e; padding: 2px 8px; border-radius: 4px;">CHG0030421 (Normal Change)</span>
+      </div>
+      <div class="panel-body">
+        
+        <div class="form-row">
+          <div class="form-label">Number:</div>
+          <div class="form-input" id="snow-number">CHG0030421</div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Short Description:</div>
+          <div class="form-input" id="snow-desc">Add monitoring loopback for network telemetry</div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Automation Type:</div>
+          <div class="form-input" id="snow-auto-type" style="color: #38bdf8; font-weight: 600;">Cisco - Interface change</div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Target Asset:</div>
+          <div class="form-input" id="snow-target">demo-iosxe (Catalyst 8000v)</div>
+        </div>
+        <div class="form-row" id="row-param1">
+          <div class="form-label" id="lbl-param1">Interface:</div>
+          <div class="form-input" id="val-param1">Loopback123</div>
+        </div>
+        <div class="form-row" id="row-param2">
+          <div class="form-label" id="lbl-param2">Description:</div>
+          <div class="form-input" id="val-param2">CHG demo - monitoring telemetry</div>
+        </div>
+
+        <!-- Trigger Button -->
+        <div class="trigger-bar">
+          <div>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">State:</span>
+            <b id="ticket-state" style="color: #f59e0b; font-size: 0.85rem; margin-left: 5px;">Authorize / Ready for Execution</b>
+          </div>
+          <button class="run-btn" id="execute-btn" onclick="runSimulation()">
+            <span>▶</span> Submit & Execute Closed Loop
+          </button>
+        </div>
+
+        <!-- Live Work Notes -->
+        <div class="worknotes-box">
+          <div class="worknote-title">Activity Stream / Work Notes (Updated via REST Table API)</div>
+          <div id="worknotes-content" style="color: var(--text-muted); font-size: 0.85rem;">
+            <i>Awaiting trigger. Click "Submit & Execute Closed Loop" above to watch automated execution and write-back.</i>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT: AWX Automation Controller -->
+    <div class="panel">
+      <div class="panel-header awx">
+        <span>⚙️ Red Hat AWX (Ansible Engine) — Live Job Output</span>
+        <span id="awx-job-status" style="font-size: 0.75rem; background: #0f172a; padding: 2px 8px; border-radius: 4px;">Job #412 — Idle</span>
+      </div>
+      <div class="panel-body" style="padding: 0;">
+        <div class="terminal-body" id="terminal">
+<span class="term-dim">======================================================================</span>
+<span class="term-dim"> AWX Automation Controller v24.0.0</span>
+<span class="term-dim"> Inventory: Multi-Cloud Production Inventory</span>
+<span class="term-dim"> Waiting for ServiceNow webhook trigger...</span>
+<span class="term-dim">======================================================================</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer Architecture Explanation -->
+  <footer>
+    <div>
+      <span class="flow-badge">Closed-Loop Flow:</span> 
+      ServiceNow Ticket ──(Async Business Rule)──▶ AWX Webhook ──▶ Infrastructure API ──▶ Auto Verification ──(Table API)──▶ Ticket Updated & Closed
+    </div>
+    <div>
+      Security: <b>Zero Inbound Open Ports (SSM & Reverse Tunneling)</b>
+    </div>
+  </footer>
+
+  <script>
+    let currentScenario = 1;
+    let isRunning = false;
+
+    const scenarios = {
+      1: {
+        badge: "CHG0030421 (Normal Change)",
+        number: "CHG0030421",
+        desc: "Configure monitoring loopback for network telemetry",
+        autoType: "Cisco - Interface change",
+        target: "demo-iosxe (Catalyst 8000v)",
+        param1Lbl: "Interface:",
+        param1Val: "Loopback123",
+        param2Lbl: "Description:",
+        param2Val: "CHG demo - monitoring telemetry",
+        jobName: "Job #412 — Cisco Interface Change",
+        terminalLogs: [
+          { text: "Identity added to SSH agent: /runner/artifacts/412/ssh_key", cls: "term-dim" },
+          { text: "PLAY [Cisco interface change | pre-check, apply, post-check] **********************", cls: "term-task" },
+          { text: "TASK [Guardrail | refuse changes on protected interfaces] ***************************", cls: "term-task" },
+          { text: "ok: [demo-iosxe] => Interface Loopback123 is not a protected management port", cls: "term-ok" },
+          { text: "TASK [PRE-CHECK | capture device state before change] *******************************", cls: "term-task" },
+          { text: "ok: [demo-iosxe] => Executed 'show ip interface brief', 'show running-config'", cls: "term-ok" },
+          { text: "TASK [CHANGE | configure interface Loopback123] ************************************", cls: "term-task" },
+          { text: "changed: [demo-iosxe] => Pushed: 'interface Loopback123', 'description CHG demo...'", cls: "term-changed" },
+          { text: "TASK [POST-CHECK | capture device state after change] ******************************", cls: "term-task" },
+          { text: "ok: [demo-iosxe] => Captured post-state across 3 validation metrics", cls: "term-ok" },
+          { text: "PLAY [Validate and write-back to ServiceNow] ***************************************", cls: "term-task" },
+          { text: "TASK [Evaluate 3-point post-check validations] *************************************", cls: "term-task" },
+          { text: "ok: [localhost] => 1. Running-config present: PASS\n                => 2. Interface Admin state (up/up): PASS\n                => 3. No collateral impact on other interfaces: PASS", cls: "term-ok" },
+          { text: "TASK [ServiceNow | POST work notes and pre/post diff attachment] ********************", cls: "term-task" },
+          { text: "changed: [localhost] => Attached CHG0030421_demo-iosxe_pre_post.txt to ServiceNow Table API", cls: "term-changed" },
+          { text: "PLAY RECAP *************************************************************************", cls: "term-task" },
+          { text: "demo-iosxe                 : ok=4    changed=1    unreachable=0    failed=0", cls: "term-ok" },
+          { text: "localhost                  : ok=3    changed=1    unreachable=0    failed=0", cls: "term-ok" }
+        ],
+        workNoteHtml: `
+          <div class="banner-success">
+            ✔ CHANGE SUCCESSFUL &mdash; All 3 Post-Checks Passed Automatically
+          </div>
+          <div style="font-size:0.85rem; margin-bottom: 8px;">
+            <b>Commands pushed:</b> <code>interface Loopback123 ; description CHG demo - monitoring telemetry ; no shutdown</code>
+          </div>
+          <table class="data-table">
+            <tr><th>Validation Metric</th><th>Status</th><th>Evidence</th></tr>
+            <tr><td>Change present in running-config</td><td style="color:#4ade80;font-weight:bold;">PASS</td><td>description CHG demo - monitoring telemetry</td></tr>
+            <tr><td>Admin operational state</td><td style="color:#4ade80;font-weight:bold;">PASS</td><td>Loopback123 is up/up</td></tr>
+            <tr><td>No impact on other interfaces</td><td style="color:#4ade80;font-weight:bold;">PASS</td><td>All 8 other interfaces unchanged</td></tr>
+          </table>
+          <div style="font-weight:bold; margin-top:8px; font-size:0.8rem;">Running-Config Unified Diff:</div>
+          <div class="diff-box">
+<span class="diff-del">--- interface Loopback123 (pre-check)</span>
+<span class="diff-add">+++ interface Loopback123 (post-check)</span>
+<span class="diff-add">+ description CHG demo - monitoring telemetry</span>
+<span class="diff-add">+ ip address 10.254.1.1 255.255.255.255</span>
+          </div>
+          <div style="color:#38bdf8; font-size:0.75rem; margin-top:6px;">📎 Attachment added: <b>CHG0030421_demo-iosxe_pre_post.txt</b></div>
+        `
+      },
+      2: {
+        badge: "CHG0030588 (Emergency Change)",
+        number: "CHG0030588",
+        desc: "Open port 22 for emergency external vendor troubleshooting",
+        autoType: "AWS - Security Group rule change",
+        target: "awx-demo-target-sg (AWS EC2 SG)",
+        param1Lbl: "Port / Protocol:",
+        param1Val: "22 / TCP",
+        param2Lbl: "Source CIDR:",
+        param2Val: "0.0.0.0/0 (Global Internet)",
+        jobName: "Job #413 — AWS SG Policy Guardrail",
+        terminalLogs: [
+          { text: "PLAY [AWS security group change] ***************************************************", cls: "term-task" },
+          { text: "TASK [GUARDRAIL | evaluate request against corporate security policy] **************", cls: "term-task" },
+          { text: "ok: [localhost] => Policy evaluation: Inbound SSH (port 22) from 0.0.0.0/0 DETECTED", cls: "term-failed" },
+          { text: "TASK [GUARDRAIL | reject non-compliant request] ************************************", cls: "term-task" },
+          { text: "changed: [localhost] => VIOLATION: Port 22 cannot be exposed to 0.0.0.0/0 without CISO exception", cls: "term-failed" },
+          { text: "TASK [ServiceNow | Update ticket with policy rejection and audit log] ***************", cls: "term-task" },
+          { text: "changed: [localhost] => Posted policy refusal to ServiceNow Table API. Exiting play.", cls: "term-changed" },
+          { text: "PLAY RECAP *************************************************************************", cls: "term-task" },
+          { text: "localhost                  : ok=2    changed=1    unreachable=0    failed=0 (Handled)", cls: "term-ok" }
+        ],
+        workNoteHtml: `
+          <div class="banner-rejected">
+            ⛔ REJECTED BY POLICY &mdash; Zero changes made to AWS Cloud
+          </div>
+          <table class="data-table">
+            <tr><th>Policy Rule</th><th>Result</th><th>Violation Detail</th></tr>
+            <tr><td>SEC-POL-04: No Wildcard Management Ports</td><td style="color:#f87171;font-weight:bold;">BLOCKED</td><td>Port 22 (SSH) open to 0.0.0.0/0 is strictly prohibited</td></tr>
+            <tr><td>SEC-POL-12: Approved IP Boundaries</td><td style="color:#f87171;font-weight:bold;">BLOCKED</td><td>Source must reside within corporate RFC1918 range (/16 or /24)</td></tr>
+          </table>
+          <p style="font-size:0.8rem; margin-top: 8px; color: #cbd5e1;">
+            <b>Presales Talking Point:</b> Automated guardrails execute <i>before</i> touching AWS production. Non-compliant human requests are intercepted automatically without needing manual security engineer review.
+          </p>
+        `
+      },
+      3: {
+        badge: "CHG0030612 (Standard Change)",
+        number: "CHG0030612",
+        desc: "Add metrics listener port 9090 from 10.30.0.0/16",
+        autoType: "AWS - Security Group rule change",
+        target: "awx-demo-target-sg (AWS EC2 SG)",
+        param1Lbl: "Port / Protocol:",
+        param1Val: "9090 / TCP",
+        param2Lbl: "Simulate Failure:",
+        param2Val: "true (Health check validation fails)",
+        jobName: "Job #414 — AWS SG Self-Healing Rollback",
+        terminalLogs: [
+          { text: "PLAY [AWS security group change] ***************************************************", cls: "term-task" },
+          { text: "TASK [GUARDRAIL | evaluate request against security policy] ************************", cls: "term-task" },
+          { text: "ok: [localhost] => Compliant corporate range (10.30.0.0/16)", cls: "term-ok" },
+          { text: "TASK [PRE-CHECK | snapshot current security group inbound rules] *******************", cls: "term-task" },
+          { text: "ok: [localhost] => Snapshot saved (baseline: 1 rule present)", cls: "term-ok" },
+          { text: "TASK [CHANGE | Authorize Security Group Ingress 9090/tcp] **************************", cls: "term-task" },
+          { text: "changed: [localhost] => AWS EC2 rule created successfully", cls: "term-changed" },
+          { text: "TASK [POST-CHECK | automated health probe & application validation] ****************", cls: "term-task" },
+          { text: "failed: [localhost] => Post-change health probe failed: Application downstream timeout", cls: "term-failed" },
+          { text: "TASK [ROLLBACK | automatic inverse rollback to pre-change snapshot] ***************", cls: "term-task" },
+          { text: "changed: [localhost] => Revoked rule 9090/tcp from awx-demo-target-sg", cls: "term-changed" },
+          { text: "TASK [ROLLBACK | verify security group state matches baseline] *********************", cls: "term-task" },
+          { text: "ok: [localhost] => State verified identical to pre-change snapshot. Zero drift.", cls: "term-ok" }
+        ],
+        workNoteHtml: `
+          <div class="banner-rollback">
+            ⚠️ POST-CHECK FAILED &mdash; Automatically ROLLED BACK to Safe State
+          </div>
+          <table class="data-table">
+            <tr><th>Phase</th><th>Status</th><th>Action Taken</th></tr>
+            <tr><td>Policy Guardrail</td><td style="color:#4ade80;">PASSED</td><td>Compliant subnet</td></tr>
+            <tr><td>AWS API Change</td><td style="color:#4ade80;">APPLIED</td><td>Added TCP 9090</td></tr>
+            <tr><td>Post-change Health Probe</td><td style="color:#f87171;">FAILED</td><td>Downstream service unresponsive</td></tr>
+            <tr><td>Automated Rollback</td><td style="color:#facc15;font-weight:bold;">RESTORED</td><td>Inverse rule executed & verified vs snapshot</td></tr>
+          </table>
+          <p style="font-size:0.8rem; margin-top: 8px; color: #cbd5e1;">
+            <b>Presales Talking Point:</b> "Self-healing infrastructure: A failed change never leaves a broken environment behind. The system automatically reverts itself within seconds."
+          </p>
+        `
+      },
+      4: {
+        badge: "INC0049210 (High Priority Incident)",
+        number: "INC0049210",
+        desc: "Interface GigabitEthernet1 down on core router demo-iosxe",
+        autoType: "Network - Auto diagnostics",
+        target: "demo-iosxe (Catalyst 8000v)",
+        param1Lbl: "Interface:",
+        param1Val: "GigabitEthernet1",
+        param2Lbl: "Diagnostics Level:",
+        param2Val: "Full (read-only show commands)",
+        jobName: "Job #415 — Autonomous Incident Triage",
+        terminalLogs: [
+          { text: "PLAY [Incident diagnostics | collect from device (read-only)] ********************", cls: "term-task" },
+          { text: "TASK [Run diagnostic commands (show int, show cdp, show logging)] ******************", cls: "term-task" },
+          { text: "ok: [demo-iosxe] => show interfaces GigabitEthernet1", cls: "term-ok" },
+          { text: "ok: [demo-iosxe] => show ip interface brief", cls: "term-ok" },
+          { text: "ok: [demo-iosxe] => show logging | include GigabitEthernet1", cls: "term-ok" },
+          { text: "PLAY [Incident diagnostics | analyse and update the incident] *********************", cls: "term-task" },
+          { text: "TASK [Rule-based AI triage findings] **********************************************", cls: "term-task" },
+          { text: "ok: [localhost] => Flagged: [HIGH] Line protocol is down (SFP/Optic signal missing)", cls: "term-failed" },
+          { text: "TASK [ServiceNow | update incident with root-cause triage & raw evidence] *********", cls: "term-task" },
+          { text: "changed: [localhost] => Attached INC0049210_diagnostics.txt to ServiceNow", cls: "term-changed" }
+        ],
+        workNoteHtml: `
+          <div class="banner-success" style="background: rgba(59, 130, 246, 0.15); border-left-color: #3b82f6; color: #93c5fd;">
+            🔍 AUTONOMOUS DIAGNOSTICS COMPLETE &mdash; Incident Pre-Triaged
+          </div>
+          <div style="font-size:0.85rem; margin-bottom: 8px;">
+            <b>Device:</b> <code>demo-iosxe</code> &middot; <b>Interface:</b> <code>GigabitEthernet1</code> &middot; <b>State:</b> <code>DOWN / DOWN</code>
+          </div>
+          <table class="data-table">
+            <tr><th>Severity</th><th>Automated Triage Finding</th><th>Suggested Next Step</th></tr>
+            <tr><td><span style="color:#ef4444;font-weight:bold;">HIGH</span></td><td>Carrier detect signal lost; transceiver rx power -40 dBm</td><td>Dispatch field engineer to inspect physical patch cable / optic</td></tr>
+            <tr><td><span style="color:#f59e0b;font-weight:bold;">MEDIUM</span></td><td>CDP neighbor 'sw-access-b' unreachable for 380s</td><td>Check upstream switch power status</td></tr>
+          </table>
+          <p style="font-size:0.8rem; margin-top: 8px; color: #cbd5e1;">
+            <b>Presales Talking Point:</b> "Before an L1 support engineer even picks up this ticket, 100% of diagnostic show commands are already analyzed and attached."
+          </p>
+        `
+      }
+    };
+
+    function loadScenario(id) {
+      if (isRunning) return;
+      currentScenario = id;
+      
+      document.querySelectorAll('.scenario-btn').forEach((btn, idx) => {
+        btn.classList.toggle('active', idx + 1 === id);
+      });
+
+      const s = scenarios[id];
+      document.getElementById('ticket-badge').textContent = s.badge;
+      document.getElementById('snow-number').textContent = s.number;
+      document.getElementById('snow-desc').textContent = s.desc;
+      document.getElementById('snow-auto-type').textContent = s.autoType;
+      document.getElementById('snow-target').textContent = s.target;
+      document.getElementById('lbl-param1').textContent = s.param1Lbl;
+      document.getElementById('val-param1').textContent = s.param1Val;
+      document.getElementById('lbl-param2').textContent = s.param2Lbl;
+      document.getElementById('val-param2').textContent = s.param2Val;
+      document.getElementById('ticket-state').textContent = "Authorize / Ready for Execution";
+      document.getElementById('ticket-state').style.color = "#f59e0b";
+      document.getElementById('awx-job-status').textContent = s.jobName + " — Idle";
+      
+      document.getElementById('worknotes-content').innerHTML = `
+        <i>Awaiting trigger. Click "Submit & Execute Closed Loop" above to watch automated execution and write-back.</i>
+      `;
+      document.getElementById('terminal').innerHTML = `
+<span class="term-dim">======================================================================</span>
+<span class="term-dim"> AWX Automation Controller v24.0.0</span>
+<span class="term-dim"> Target: ${s.target}</span>
+<span class="term-dim"> Waiting for ServiceNow webhook trigger...</span>
+<span class="term-dim">======================================================================</span>
+      `;
+    }
+
+    async function runSimulation() {
+      if (isRunning) return;
+      isRunning = true;
+      const s = scenarios[currentScenario];
+      const btn = document.getElementById('execute-btn');
+      const term = document.getElementById('terminal');
+      btn.disabled = true;
+      btn.innerHTML = `<span>⏳</span> Running Closed-Loop...`;
+
+      document.getElementById('ticket-state').textContent = "In Progress (Automation Triggered)";
+      document.getElementById('ticket-state').style.color = "#38bdf8";
+      document.getElementById('awx-job-status').textContent = s.jobName + " — Running";
+
+      term.innerHTML = `<span class="term-dim">Trigger received from ServiceNow Business Rule via REST API...</span>\n\n`;
+
+      for (let log of s.terminalLogs) {
+        await new Promise(r => setTimeout(r, 450));
+        const div = document.createElement('div');
+        div.className = `term-line ${log.cls}`;
+        div.textContent = log.text;
+        term.appendChild(div);
+        term.scrollTop = term.scrollHeight;
+      }
+
+      await new Promise(r => setTimeout(r, 600));
+
+      // Finalize ServiceNow view
+      document.getElementById('ticket-state').textContent = "Closed / Resolved";
+      document.getElementById('ticket-state').style.color = "#22c55e";
+      document.getElementById('awx-job-status').textContent = s.jobName + " — Finished (Success)";
+      document.getElementById('worknotes-content').innerHTML = s.workNoteHtml;
+
+      btn.disabled = false;
+      btn.innerHTML = `<span>✔</span> Re-run Scenario`;
+      isRunning = false;
+    }
+  </script>
+</body>
+</html>

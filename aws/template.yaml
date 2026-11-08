@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ServiceNow + AWX Demo Infrastructure (EC2 t3.large, IAM Role, Security Groups)'
+
+Parameters:
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id'
+    Description: 'Ubuntu 22.04 LTS AMI ID'
+  InstanceType:
+    Type: String
+    Default: 't3.large'
+    Description: 'EC2 Instance Type'
+
+Resources:
+  # Host SG: No inbound, only outbound
+  HostSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: 'awx-demo-host-sg'
+      GroupDescription: 'AWX demo host - no inbound, SSM only'
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: awx-demo-host-sg
+
+  # Target SG: Demo SG managed via ServiceNow + AWX
+  TargetSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: 'awx-demo-target-sg'
+      GroupDescription: 'Demo SG managed via ServiceNow + AWX'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: '10.0.0.0/8'
+          Description: 'baseline-https'
+      Tags:
+        - Key: Name
+          Value: awx-demo-target-sg
+        - Key: Purpose
+          Value: snow-awx-demo
+
+  # IAM Role for EC2
+  InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'awx-demo-ec2-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ec2.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: sg-change-demo
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:DescribeSecurityGroupRules'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'ec2:AuthorizeSecurityGroupIngress'
+                  - 'ec2:RevokeSecurityGroupIngress'
+                Resource: !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${TargetSecurityGroup.GroupId}'
+
+  InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: 'awx-demo-ec2-role'
+      Roles:
+        - !Ref InstanceRole
+
+  # EC2 Instance
+  AwxInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds:
+        - !GetAtt HostSecurityGroup.GroupId
+      BlockDeviceMappings:
+        - DeviceName: '/dev/sda1'
+          Ebs:
+            VolumeSize: 40
+            VolumeType: gp3
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 2
+        HttpTokens: required
+      Tags:
+        - Key: Name
+          Value: awx-demo
+
+Outputs:
+  InstanceId:
+    Description: 'Instance ID to connect via Session Manager'
+    Value: !Ref AwxInstance
+  AwsRegion:
+    Description: 'AWS Region for .env'
+    Value: !Ref 'AWS::Region'
+  DemoSgId:
+    Description: 'Target Security Group ID for .env'
+    Value: !GetAtt TargetSecurityGroup.GroupId
+  HostSgId:
+    Description: 'Host Security Group ID'
+    Value: !GetAtt HostSecurityGroup.GroupId

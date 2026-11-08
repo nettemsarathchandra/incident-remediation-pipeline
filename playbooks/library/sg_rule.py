@@ -38,7 +38,9 @@ def main():
     if not HAS_BOTO3:
         m.fail_json(msg="boto3 is required in the execution environment")
     p = m.params
-    ec2 = boto3.client("ec2", region_name=p["region"])
+    import os
+    endpoint = os.environ.get("AWS_ENDPOINT_URL")
+    ec2 = boto3.client("ec2", region_name=p["region"], endpoint_url=endpoint)
 
     def snapshot():
         res = ec2.describe_security_group_rules(Filters=[{"Name": "group-id", "Values": [p["group_id"]]}])
